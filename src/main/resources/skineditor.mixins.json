@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.nerix.skineditor.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "PlayerSkinMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

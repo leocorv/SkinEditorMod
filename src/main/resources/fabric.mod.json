@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "skineditor",
+  "version": "${version}",
+  "name": "Skin Editor",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/skineditor/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "org.nerix.skineditor.client.SkinEditorModDataGenerator"
+    ],
+    "client": [
+      "org.nerix.skineditor.client.SkinEditorModClient"
+    ],
+    "main": [
+      "org.nerix.skineditor.SkinEditorMod"
+    ]
+  },
+  "mixins": [
+    "skineditor.mixins.json",
+    {
+      "config": "skineditor.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
