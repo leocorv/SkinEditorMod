@@ -1,4 +1,4 @@
-package org.nerix.skineditor.mixin;
+package org.nerix.skineditor.client.mixin;
 
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.util.SkinTextures;
