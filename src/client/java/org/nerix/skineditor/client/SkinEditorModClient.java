@@ -8,17 +8,17 @@ import net.minecraft.util.Identifier;
 
 public class SkinEditorModClient implements ClientModInitializer {
 
-    // LA VARIABLE MAGIQUE : C'est elle qui stocke l'ID du skin custom
+    // On stocke l'ID pour le Mixin
     public static Identifier TEMP_SKIN_ID = null;
+
+    // NOUVEAU : On stocke l'objet Skin entier pour ne pas qu'il soit supprimé par le Garbage Collector
+    public static EditableSkin PERMANENT_SKIN = null;
 
     @Override
     public void onInitializeClient() {
-        System.out.println(">>> [SkinEditor] Chargement...");
-
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             dispatcher.register(ClientCommandManager.literal("skineditor")
                     .executes(context -> {
-                        // On ouvre l'écran sur le thread principal
                         MinecraftClient.getInstance().send(() -> {
                             MinecraftClient.getInstance().setScreen(new SkinEditorScreen());
                         });
