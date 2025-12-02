@@ -17,6 +17,12 @@ public class SkinEditorScreen extends Screen {
     private float playerRotationY = 0f;
     private boolean isDraggingModel = false;
 
+    // COULEURS ACTUELLES (0.0 à 1.0)
+    // On met une couleur "chair" par défaut (un peu orange/beige)
+    private float skinRed = 1.0f;
+    private float skinGreen = 0.8f;
+    private float skinBlue = 0.6f;
+
     private enum MenuState { MAIN, CLOTHES, BODY }
     private MenuState currentMenu = MenuState.MAIN;
 
@@ -74,15 +80,30 @@ public class SkinEditorScreen extends Screen {
             this.addDrawableChild(ButtonWidget.builder(Text.literal("< Retour"), b -> { currentMenu = MenuState.MAIN; rebuildUI(); }).dimensions(startX, startY + gap * 3, btnW, 20).build());
         }
         else if (currentMenu == MenuState.BODY) {
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Peau Alien (Vert)"), b -> {
-                if(getSkin() != null) {
-                    getSkin().fillArea(8, 0, 8, 8, 0xFF00FF00); getSkin().fillArea(20, 20, 8, 12, 0xFF00FF00);
-                    getSkin().fillArea(36, 52, 4, 12, 0xFF00FF00); getSkin().fillArea(44, 20, 4, 12, 0xFF00FF00);
-                    getSkin().fillArea(4, 20, 4, 12, 0xFF00FF00); getSkin().fillArea(20, 52, 4, 12, 0xFF00FF00);
-                    getSkin().fillArea(32, 0, 32, 16, 0x00000000); updateGlobalSkin();
-                }
-            }).dimensions(startX, startY, btnW, 20).build());
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("< Retour"), b -> { currentMenu = MenuState.MAIN; rebuildUI(); }).dimensions(startX, startY + gap * 3, btnW, 20).build());
+
+            // SLIDER ROUGE
+            this.addDrawableChild(new ColorSlider(startX, startY, btnW, 20, Text.literal("Rouge"), skinRed) {
+                @Override protected void updateMessage() { this.setMessage(Text.literal("Rouge: " + (int)(value * 255))); }
+                @Override protected void applyValue() { skinRed = (float)this.value; updateSkinColor(); }
+            });
+
+            // SLIDER VERT
+            this.addDrawableChild(new ColorSlider(startX, startY + gap, btnW, 20, Text.literal("Vert"), skinGreen) {
+                @Override protected void updateMessage() { this.setMessage(Text.literal("Vert: " + (int)(value * 255))); }
+                @Override protected void applyValue() { skinGreen = (float)this.value; updateSkinColor(); }
+            });
+
+            // SLIDER BLEU
+            this.addDrawableChild(new ColorSlider(startX, startY + gap * 2, btnW, 20, Text.literal("Bleu"), skinBlue) {
+                @Override protected void updateMessage() { this.setMessage(Text.literal("Bleu: " + (int)(value * 255))); }
+                @Override protected void applyValue() { skinBlue = (float)this.value; updateSkinColor(); }
+            });
+
+            // Bouton Retour
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("< Retour"), button -> {
+                this.currentMenu = MenuState.MAIN;
+                rebuildUI();
+            }).dimensions(startX, startY + gap * 4, btnW, 20).build());
         }
     }
 
@@ -161,4 +182,33 @@ public class SkinEditorScreen extends Screen {
     @Override public boolean mouseClicked(double mouseX, double mouseY, int button) { if (button == 0 && mouseX < leftZoneWidth) { this.isDraggingModel = true; return true; } return super.mouseClicked(mouseX, mouseY, button); }
     @Override public boolean mouseReleased(double mouseX, double mouseY, int button) { if (button == 0) isDraggingModel = false; return super.mouseReleased(mouseX, mouseY, button); }
     @Override public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) { if (this.isDraggingModel) { this.playerRotationY += (float) deltaX * 2.0f; return true; } return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY); }
+
+    // --- CLASSE UTILITAIRE POUR LES SLIDERS ---
+    private abstract static class ColorSlider extends net.minecraft.client.gui.widget.SliderWidget {
+        public ColorSlider(int x, int y, int width, int height, Text text, double value) {
+            super(x, y, width, height, text, value);
+            this.updateMessage();
+        }
+        // Ces méthodes seront définies quand on créera les sliders
+    }
+
+    // Applique la couleur des sliders sur le corps
+    private void updateSkinColor() {
+        if (getSkin() != null) {
+            // Conversion 0.0-1.0 vers 0-255
+            int r = (int)(skinRed * 255);
+            int g = (int)(skinGreen * 255);
+            int b = (int)(skinBlue * 255);
+
+            // Format ABGR pour Minecraft (Alpha, Bleu, Vert, Rouge)
+            // 0xFF = Alpha 255 (Opaque)
+            int color = (0xFF << 24) | (b << 16) | (g << 8) | r;
+
+            // On appelle la méthode de peinture intelligente (que tu as déjà dans EditableSkin normalement)
+            // Si tu ne l'as pas, je te la remets plus bas
+            getSkin().paintSkin(color);
+
+            updateGlobalSkin();
+        }
+    }
 }
