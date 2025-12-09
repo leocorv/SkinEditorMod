@@ -16,6 +16,7 @@ public class SkinEditorModClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        ClientNetworkHandler.registerClient();
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             dispatcher.register(ClientCommandManager.literal("skineditor")
                     .executes(context -> {
