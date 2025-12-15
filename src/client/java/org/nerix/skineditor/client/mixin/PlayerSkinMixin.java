@@ -29,7 +29,7 @@ public class PlayerSkinMixin {
                     null,
                     null,
                     null,
-                    SkinTextures.Model.WIDE, // Tu peux changer en SLIM pour le modèle Alex
+                    SkinEditorModClient.TEMP_SKIN_MODEL,
                     true
             );
 

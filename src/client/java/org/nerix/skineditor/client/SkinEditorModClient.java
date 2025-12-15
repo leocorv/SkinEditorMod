@@ -4,12 +4,14 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.util.SkinTextures;
 import net.minecraft.util.Identifier;
 
 public class SkinEditorModClient implements ClientModInitializer {
 
     // On stocke l'ID pour le Mixin
     public static Identifier TEMP_SKIN_ID = null;
+    public static SkinTextures.Model TEMP_SKIN_MODEL = SkinTextures.Model.WIDE;
 
     // NOUVEAU : On stocke l'objet Skin entier pour ne pas qu'il soit supprimé par le Garbage Collector
     public static EditableSkin PERMANENT_SKIN = null;

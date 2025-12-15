@@ -1,18 +1,28 @@
 package org.nerix.skineditor.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.fabricmc.loader.api.FabricLoader; // IMPORTANT pour le chemin config
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.client.util.DefaultSkinHelper;
+import net.minecraft.client.util.SkinTextures;
 import net.minecraft.resource.Resource;
 import net.minecraft.util.Identifier;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public class EditableSkin implements AutoCloseable {
@@ -20,123 +30,173 @@ public class EditableSkin implements AutoCloseable {
     private final NativeImageBackedTexture texture;
     private final Identifier textureId;
 
+    // --- NOUVEAU : MÉMOIRE DES MODIFICATIONS ---
+    private boolean showBaseSkin = true; // La case à cocher
+    private final List<String> appliedPaths = new ArrayList<>(); // Liste des vêtements ajoutés
+    private int currentBodyColor = -1; // -1 = Pas de couleur, sinon code couleur int
+
     public EditableSkin() {
-        // 1. Image RGBA
         this.image = new NativeImage(NativeImage.Format.RGBA, 64, 64, false);
         this.texture = new NativeImageBackedTexture(this.image);
 
-        // 2. Enregistrement
         String uniqueName = "temp_skin_" + System.currentTimeMillis();
         this.textureId = MinecraftClient.getInstance().getTextureManager()
                 .registerDynamicTexture(uniqueName, this.texture);
 
-        // 3. Anti-Flou initial
         this.texture.setFilter(false, false);
 
-        // 4. Charger Steve par défaut
-        loadDefaultSteve();
+        // Au démarrage, on construit l'image
+        recompose();
     }
 
     public Identifier getTextureId() { return textureId; }
 
-    // Charge le skin de Steve depuis les assets internes
-    public void loadDefaultSteve() {
-        try {
-            Identifier steveId = Identifier.of("minecraft", "textures/entity/player/wide/steve.png");
-            Optional<Resource> resource = MinecraftClient.getInstance().getResourceManager().getResource(steveId);
-            if (resource.isPresent()) {
-                try (InputStream stream = resource.get().getInputStream()) {
-                    NativeImage steveImage = NativeImage.read(stream);
-                    this.image.copyFrom(steveImage);
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-            fillArea(0, 0, 64, 64, 0xFFFFFFFF);
+    // --- 1. LE MOTEUR DE RECOMPOSITION ---
+    // Cette fonction redessine tout de zéro. C'est le secret pour la Checkbox.
+    public void recompose() {
+        // A. On efface tout (Transparent)
+        fillPixels(0, 0, 64, 64, 0x00000000);
+
+        // B. Si la case est cochée, on dessine le joueur
+        if (showBaseSkin) {
+            loadCurrentPlayerSkin();
         }
+
+        // C. Si une couleur de peau est définie, on l'applique
+        if (currentBodyColor != -1) {
+            doPaintSkin(currentBodyColor);
+        }
+
+        // D. On ré-applique tous les vêtements de la liste
+        for (String path : appliedPaths) {
+            doMergeLayerFromDisk(path);
+        }
+
         upload();
     }
 
-    // --- LA MÉTHODE QUI POSAIT PROBLÈME (Corrigée avec les bons imports) ---
-    public void mergeLayerFromDisk(String relativePath) {
-        // On récupère le dossier de config via Fabric
+    // --- 2. ACTIONS PUBLIQUES (Appelées par l'écran) ---
+
+    public void setShowBaseSkin(boolean show) {
+        this.showBaseSkin = show;
+        recompose(); // On redessine tout instantanément
+    }
+
+    // On remplace "mergeLayer" par "addLayer" car on ajoute à la liste
+    public void addLayer(String path) {
+        this.appliedPaths.add(path);
+        recompose();
+    }
+
+    public void setBodyColor(int color) {
+        this.currentBodyColor = color;
+        recompose();
+    }
+
+    // Pour le bouton Reset
+    public void resetAll() {
+        this.appliedPaths.clear();
+        this.currentBodyColor = -1;
+        this.showBaseSkin = true;
+        recompose();
+    }
+
+//    // --- 3. SAUVEGARDE (EXPORT PNG) ---
+//    public void saveSkinToDisk() {
+//        try {
+//            Path runDir = MinecraftClient.getInstance().runDirectory.toPath();
+//            Path saveDir = runDir.resolve("saved_skins");
+//
+//            if (!Files.exists(saveDir)) Files.createDirectories(saveDir);
+//
+//            String filename = "skin_" + System.currentTimeMillis() + ".png";
+//            Path target = saveDir.resolve(filename);
+//
+//            this.image.writeTo(target);
+//            System.out.println("Skin sauvegardé ici : " + target.toAbsolutePath());
+//
+//            // Petit son ou feedback chat pourrait être ajouté ici
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
+
+    // --- 4. MÉTHODES INTERNES (LOGIQUE DESSIN) ---
+
+    private void loadCurrentPlayerSkin() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return;
+
+        String skinUrl = client.player.getSkinTextures().textureUrl();
+        if (skinUrl != null && !skinUrl.isEmpty()) {
+            try {
+                // CORRECTION ICI : new URL() est déprécié en Java 21, on utilise URI
+                InputStream stream = URI.create(skinUrl).toURL().openStream();
+                NativeImage skin = NativeImage.read(stream);
+                this.image.copyFrom(skin);
+                stream.close();
+                return;
+            } catch (Exception e) {
+                // Ignore erreur réseau
+            }
+        }
+        loadDefaultSkin();
+    }
+
+    private void loadDefaultSkin() {
+        // Copie ici ta méthode loadDefaultSkin précédente
+        // ... (pour abréger, je mets le standard)
+        try {
+            Identifier id = DefaultSkinHelper.getTexture();
+            InputStream s = MinecraftClient.getInstance().getResourceManager().getResource(id).get().getInputStream();
+            this.image.copyFrom(NativeImage.read(s));
+        } catch (Exception e) {}
+    }
+
+
+    private void doMergeLayerFromDisk(String relativePath) {
         Path configDir = FabricLoader.getInstance().getConfigDir();
-        // On construit le chemin complet : .minecraft/config/skineditor/outfits/TonFichier.png
         File file = configDir.resolve("skineditor/outfits/" + relativePath).toFile();
 
-        if (!file.exists()) {
-            System.out.println("Erreur : Fichier introuvable -> " + file.getAbsolutePath());
-            return;
-        }
-
-        try (FileInputStream stream = new FileInputStream(file)) {
-            NativeImage layerImage = NativeImage.read(stream);
-
-            // Fusion des pixels (Gestion transparence)
-            for (int x = 0; x < layerImage.getWidth(); x++) {
-                for (int y = 0; y < layerImage.getHeight(); y++) {
-                    int color = layerImage.getColor(x, y);
-                    // Si le pixel n'est pas transparent (Alpha > 0)
-                    if ((color >> 24 & 0xFF) > 0) {
-                        this.image.setColor(x, y, color);
+        if (file.exists()) {
+            try (FileInputStream stream = new FileInputStream(file)) {
+                NativeImage layer = NativeImage.read(stream);
+                // Fusion
+                for (int x = 0; x < layer.getWidth(); x++) {
+                    for (int y = 0; y < layer.getHeight(); y++) {
+                        int color = layer.getColor(x, y);
+                        if ((color >> 24 & 0xFF) > 0) { // Si pas transparent
+                            this.image.setColor(x, y, color);
+                        }
                     }
                 }
-            }
-            upload(); // On envoie au GPU
-        } catch (IOException e) {
-            e.printStackTrace();
+            } catch (IOException e) { e.printStackTrace(); }
         }
     }
 
-    // --- COLORIAGE PEAU (Sliders) ---
-    public void paintSkin(int color) {
+    private void doPaintSkin(int color) {
         // Tête
-        fillPixels(8, 0, 8, 8, color); fillPixels(16, 0, 8, 8, color); // Haut/Bas
-        fillPixels(0, 8, 32, 8, color); // Faces
-
+        fillPixels(8, 0, 8, 8, color); fillPixels(16, 0, 8, 8, color); fillPixels(0, 8, 32, 8, color);
         // Torse
-        fillPixels(20, 16, 8, 4, color); fillPixels(28, 16, 8, 4, color); // Haut/Bas
-        fillPixels(16, 20, 24, 12, color); // Faces
-        fillPixels(32, 20, 8, 12, color); // Dos
-
+        fillPixels(20, 16, 8, 4, color); fillPixels(28, 16, 8, 4, color); fillPixels(16, 20, 24, 12, color); fillPixels(32, 20, 8, 12, color);
         // Bras
-        fillPixels(44, 16, 4, 4, color); fillPixels(48, 16, 4, 4, color); // Haut/Bas Droit
-        fillPixels(40, 20, 16, 12, color); // Faces Droit
-        fillPixels(36, 48, 4, 4, color); fillPixels(40, 48, 4, 4, color); // Haut/Bas Gauche
-        fillPixels(32, 52, 16, 12, color); // Faces Gauche
-
+        fillPixels(44, 16, 4, 4, color); fillPixels(48, 16, 4, 4, color); fillPixels(40, 20, 16, 12, color);
+        fillPixels(36, 48, 4, 4, color); fillPixels(40, 48, 4, 4, color); fillPixels(32, 52, 16, 12, color);
         // Jambes
-        fillPixels(4, 16, 4, 4, color); fillPixels(8, 16, 4, 4, color); // Haut/Bas Droit
-        fillPixels(0, 20, 16, 12, color); // Faces Droit
-        fillPixels(20, 48, 4, 4, color); fillPixels(24, 48, 4, 4, color); // Haut/Bas Gauche
-        fillPixels(16, 52, 16, 12, color); // Faces Gauche
-
-        upload();
-    }
-
-    public void fillArea(int x, int y, int width, int height, int color) {
-        fillPixels(x, y, width, height, color);
-        upload();
-    }
-
-    public void resetToSteveBase() {
-        fillArea(0, 0, 64, 64, 0x00000000);
-        loadDefaultSteve();
+        fillPixels(4, 16, 4, 4, color); fillPixels(8, 16, 4, 4, color); fillPixels(0, 20, 16, 12, color);
+        fillPixels(20, 48, 4, 4, color); fillPixels(24, 48, 4, 4, color); fillPixels(16, 52, 16, 12, color);
     }
 
     private void fillPixels(int x, int y, int w, int h, int color) {
         for (int i = x; i < x + w; i++) {
             for (int j = y; j < y + h; j++) {
-                if (i >= 0 && i < 64 && j >= 0 && j < 64) {
-                    this.image.setColor(i, j, color);
-                }
+                if (i >= 0 && i < 64 && j >= 0 && j < 64) this.image.setColor(i, j, color);
             }
         }
     }
 
     private void upload() {
         this.texture.bindTexture();
-        // Force le pixel art (Anti-Flou)
         RenderSystem.texParameter(3553, 10241, 9728);
         RenderSystem.texParameter(3553, 10240, 9728);
         this.texture.upload();
