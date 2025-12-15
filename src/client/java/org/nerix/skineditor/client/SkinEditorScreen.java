@@ -5,6 +5,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.CheckboxWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
 import net.minecraft.text.Text;
 import org.joml.Quaternionf;
@@ -18,6 +19,7 @@ public class SkinEditorScreen extends Screen {
     private int rightZoneWidth;
     private float playerRotationY = 0f;
     private boolean isDraggingModel = false;
+    private CheckboxWidget baseSkinCheckbox;
 
     // --- NAVIGATION DYNAMIQUE ---
     // Si null = Menu Principal (Racine virtuelle)
@@ -46,6 +48,9 @@ public class SkinEditorScreen extends Screen {
         if (SkinEditorModClient.PERMANENT_SKIN == null) {
             try {
                 SkinEditorModClient.PERMANENT_SKIN = new EditableSkin();
+                if (this.client != null && this.client.player != null) {
+                    SkinEditorModClient.PERMANENT_SKIN.loadPlayerSkin(this.client.player);
+                }
                 updateGlobalSkin();
             } catch (Exception e) { e.printStackTrace(); }
         }
@@ -64,6 +69,33 @@ public class SkinEditorScreen extends Screen {
         int startY = 40;
         int gap = 25;
         int currentY = startY;
+
+        if (getSkin() != null) {
+            this.baseSkinCheckbox = new CheckboxWidget(startX, currentY, btnW, 20, Text.literal("Base Skin"), getSkin().isBaseSkinVisible()) {
+                @Override
+                public void onPress() {
+                    super.onPress();
+                    if (getSkin() != null) {
+                        getSkin().setBaseSkinVisible(this.isChecked());
+                        updateGlobalSkin();
+                    }
+                }
+            };
+            this.addDrawableChild(this.baseSkinCheckbox);
+            currentY += gap;
+
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Exporter en PNG"), button -> {
+                try {
+                    java.nio.file.Path exported = getSkin().exportSkin();
+                    if (this.client != null && this.client.player != null) {
+                        this.client.player.sendMessage(Text.literal("Skin exporté : " + exported.toAbsolutePath()), false);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).dimensions(startX, currentY, btnW, 20).build());
+            currentY += gap;
+        }
 
         // ============================================================
         // CAS 1 : MENU PRINCIPAL (Racine)
