@@ -17,20 +17,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class EditableSkin implements AutoCloseable {
-    private final NativeImage bufferImage; // L'image finale
+    private final NativeImage bufferImage;
     private final NativeImageBackedTexture texture;
     private final Identifier textureId;
 
-    // --- ARCHITECTURE CALQUES ---
-    // 1. Le skin de base (Joueur) est maintenant stocké à part
+    // 1. Base Skin (Joueur)
     private NativeImage basePlayerPixels = null;
     private boolean showBaseSkin = true;
 
-    // 2. La liste des vêtements (Objets Layer)
+    // 2. Liste des Calques
     public final List<SkinLayer> layers = new ArrayList<>();
-
-    // 3. Couleur corps
-    private int currentBodyColor = -1;
 
     public EditableSkin() {
         this.bufferImage = new NativeImage(NativeImage.Format.RGBA, 64, 64, false);
@@ -41,55 +37,90 @@ public class EditableSkin implements AutoCloseable {
                 .registerDynamicTexture(uniqueName, this.texture);
 
         this.texture.setFilter(false, false);
-
-        // On charge le skin du joueur en mémoire une bonne fois pour toutes
         loadBaseSkinInMemory();
         recompose();
     }
 
     public Identifier getTextureId() { return textureId; }
 
-    // --- MOTEUR DE DESSIN OPTIMISÉ ---
+    // --- MOTEUR DE DESSIN ---
     public void recompose() {
-        // 1. Reset (Transparent)
         clearImage();
 
-        // 2. Base Skin (copie depuis la mémoire)
+        // 1. Base
         if (showBaseSkin && basePlayerPixels != null) {
             copyPixels(basePlayerPixels, this.bufferImage);
         }
 
-        // 3. Couleur Peau
-        if (currentBodyColor != -1) {
-            doPaintSkin(currentBodyColor);
-        }
-
-        // 4. Vêtements (On empile les calques visibles)
+        // 2. Calques (Inclus désormais la Couleur du corps et le Dessin)
         for (SkinLayer layer : layers) {
             if (layer.isVisible) {
                 mergePixels(layer.pixels, this.bufferImage);
             }
         }
-
         upload();
     }
 
-    // --- GESTION DES CALQUES (Actions) ---
+    // --- ACTIONS CALQUES ---
 
     public void addLayer(String path, String displayName) {
-        // On charge l'image disque -> RAM
         NativeImage img = loadFromDisk(path);
         if (img != null) {
-            // On crée le calque et on l'ajoute
             this.layers.add(new SkinLayer(displayName, img));
+            recompose();
+        }
+    }
+
+    // NOUVEAU : La couleur du corps devient un calque !
+    public void updateBodyColorLayer(int color) {
+        // On cherche si le calque existe déjà
+        SkinLayer bodyLayer = null;
+        for (SkinLayer l : layers) {
+            if (l.name.equals("Peinture Corps")) {
+                bodyLayer = l;
+                break;
+            }
+        }
+
+        // Si non, on le crée
+        if (bodyLayer == null) {
+            NativeImage img = new NativeImage(64, 64, true);
+            bodyLayer = new SkinLayer("Peinture Corps", img);
+            this.layers.add(0, bodyLayer); // On l'ajoute au début (en bas de la pile)
+        }
+
+        // On remplit les zones du corps sur ce calque
+        fillBodyParts(bodyLayer.pixels, color);
+        recompose();
+    }
+
+    // NOUVEAU : Dessiner un pixel (Pinceau)
+    public void paintPixel(int x, int y, int color) {
+        // On cherche un calque "Dessin", sinon on le crée
+        SkinLayer drawLayer = null;
+        for (SkinLayer l : layers) {
+            if (l.name.equals("Mon Dessin")) {
+                drawLayer = l;
+                break;
+            }
+        }
+
+        if (drawLayer == null) {
+            NativeImage img = new NativeImage(64, 64, true); // true = clear (transparent)
+            drawLayer = new SkinLayer("Mon Dessin", img);
+            this.layers.add(drawLayer); // Ajouté à la fin (par dessus tout)
+        }
+
+        // On dessine le pixel
+        if (x >= 0 && x < 64 && y >= 0 && y < 64) {
+            drawLayer.pixels.setColor(x, y, color);
             recompose();
         }
     }
 
     public void removeLayer(int index) {
         if (index >= 0 && index < layers.size()) {
-            SkinLayer l = layers.remove(index);
-            l.close(); // Important : libérer la mémoire
+            layers.remove(index).close();
             recompose();
         }
     }
@@ -102,48 +133,52 @@ public class EditableSkin implements AutoCloseable {
         }
     }
 
-    public void moveLayerUp(int index) {
-        if (index < layers.size() - 1) {
-            SkinLayer l = layers.remove(index);
-            layers.add(index + 1, l);
-            recompose();
-        }
-    }
-
     public void setShowBaseSkin(boolean show) {
         this.showBaseSkin = show;
-        recompose();
-    }
-
-    public void setBodyColor(int color) {
-        this.currentBodyColor = color;
         recompose();
     }
 
     public void resetAll() {
         for(SkinLayer l : layers) l.close();
         layers.clear();
-        currentBodyColor = -1;
         showBaseSkin = true;
         recompose();
     }
 
-    // --- OUTILS INTERNES ---
+    // --- INTERNE ---
+
+    private void fillBodyParts(NativeImage img, int color) {
+        // On nettoie d'abord l'image du calque
+        for(int x=0; x<64; x++) for(int y=0; y<64; y++) img.setColor(x, y, 0);
+
+        // Tête
+        fillPixels(img, 8, 0, 8, 8, color); fillPixels(img, 16, 0, 8, 8, color); fillPixels(img, 0, 8, 32, 8, color);
+        // Torse
+        fillPixels(img, 20, 16, 8, 4, color); fillPixels(img, 28, 16, 8, 4, color); fillPixels(img, 16, 20, 24, 12, color); fillPixels(img, 32, 20, 8, 12, color);
+        // Bras
+        fillPixels(img, 44, 16, 4, 4, color); fillPixels(img, 48, 16, 4, 4, color); fillPixels(img, 40, 20, 16, 12, color);
+        fillPixels(img, 36, 48, 4, 4, color); fillPixels(img, 40, 48, 4, 4, color); fillPixels(img, 32, 52, 16, 12, color);
+        // Jambes
+        fillPixels(img, 4, 16, 4, 4, color); fillPixels(img, 8, 16, 4, 4, color); fillPixels(img, 0, 20, 16, 12, color);
+        fillPixels(img, 20, 48, 4, 4, color); fillPixels(img, 24, 48, 4, 4, color); fillPixels(img, 16, 52, 16, 12, color);
+    }
+
+    private void fillPixels(NativeImage img, int x, int y, int w, int h, int color) {
+        for (int i = x; i < x + w; i++) {
+            for (int j = y; j < y + h; j++) {
+                if (i < 64 && j < 64) img.setColor(i, j, color);
+            }
+        }
+    }
 
     private void loadBaseSkinInMemory() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
-
         try {
             String url = client.player.getSkinTextures().textureUrl();
             InputStream stream;
-            if (url != null && !url.isEmpty()) {
-                stream = URI.create(url).toURL().openStream();
-            } else {
-                Identifier id = DefaultSkinHelper.getTexture();
-                stream = client.getResourceManager().getResource(id).get().getInputStream();
-            }
-
+            if (url != null && !url.isEmpty()) stream = URI.create(url).toURL().openStream();
+            else stream = client.getResourceManager().getResource(DefaultSkinHelper.getTexture()).get().getInputStream();
             this.basePlayerPixels = NativeImage.read(stream);
             stream.close();
         } catch (Exception e) { e.printStackTrace(); }
@@ -153,55 +188,24 @@ public class EditableSkin implements AutoCloseable {
         try {
             Path configDir = FabricLoader.getInstance().getConfigDir();
             File file = configDir.resolve("skineditor/outfits/" + relativePath).toFile();
-            if (file.exists()) {
-                return NativeImage.read(new FileInputStream(file));
-            }
-        } catch (Exception e) { e.printStackTrace(); }
+            if (file.exists()) return NativeImage.read(new FileInputStream(file));
+        } catch (Exception e) {}
         return null;
     }
 
     private void clearImage() {
-        for (int x = 0; x < 64; x++)
-            for (int y = 0; y < 64; y++)
-                this.bufferImage.setColor(x, y, 0x00000000);
+        for (int x = 0; x < 64; x++) for (int y = 0; y < 64; y++) this.bufferImage.setColor(x, y, 0);
     }
 
     private void copyPixels(NativeImage src, NativeImage dest) {
-        for (int x = 0; x < 64; x++) {
-            for (int y = 0; y < 64; y++) {
-                dest.setColor(x, y, src.getColor(x, y));
-            }
-        }
+        for (int x = 0; x < 64; x++) for (int y = 0; y < 64; y++) dest.setColor(x, y, src.getColor(x, y));
     }
 
     private void mergePixels(NativeImage src, NativeImage dest) {
         for (int x = 0; x < src.getWidth(); x++) {
             for (int y = 0; y < src.getHeight(); y++) {
                 int color = src.getColor(x, y);
-                if ((color >> 24 & 0xFF) > 0) { // Si pas transparent
-                    dest.setColor(x, y, color);
-                }
-            }
-        }
-    }
-
-    private void doPaintSkin(int color) {
-        // Tête
-        fillPixels(8, 0, 8, 8, color); fillPixels(16, 0, 8, 8, color); fillPixels(0, 8, 32, 8, color);
-        // Torse
-        fillPixels(20, 16, 8, 4, color); fillPixels(28, 16, 8, 4, color); fillPixels(16, 20, 24, 12, color); fillPixels(32, 20, 8, 12, color);
-        // Bras
-        fillPixels(44, 16, 4, 4, color); fillPixels(48, 16, 4, 4, color); fillPixels(40, 20, 16, 12, color);
-        fillPixels(36, 48, 4, 4, color); fillPixels(40, 48, 4, 4, color); fillPixels(32, 52, 16, 12, color);
-        // Jambes
-        fillPixels(4, 16, 4, 4, color); fillPixels(8, 16, 4, 4, color); fillPixels(0, 20, 16, 12, color);
-        fillPixels(20, 48, 4, 4, color); fillPixels(24, 48, 4, 4, color); fillPixels(16, 52, 16, 12, color);
-    }
-
-    private void fillPixels(int x, int y, int w, int h, int color) {
-        for (int i = x; i < x + w; i++) {
-            for (int j = y; j < y + h; j++) {
-                if (i >= 0 && i < 64 && j >= 0 && j < 64) this.bufferImage.setColor(i, j, color);
+                if ((color >> 24 & 0xFF) > 0) dest.setColor(x, y, color);
             }
         }
     }
@@ -216,5 +220,7 @@ public class EditableSkin implements AutoCloseable {
     @Override
     public void close() {
         this.texture.close();
+        if (basePlayerPixels != null) basePlayerPixels.close();
+        for(SkinLayer l : layers) l.close();
     }
 }
