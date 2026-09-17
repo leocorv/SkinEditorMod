@@ -3,11 +3,14 @@
   "id": "skineditor",
   "version": "${version}",
   "name": "Skin Editor",
-  "description": "",
-  "authors": [],
-  "contact": {},
+  "description": "Early experimental Fabric prototype for editing and layering Minecraft player skins in-game.",
+  "authors": [
+    "Léo Corvaisier-Palluy"
+  ],
+  "contact": {
+    "sources": "https://github.com/leocorv/SkinEditorMod"
+  },
   "license": "All-Rights-Reserved",
-  "icon": "assets/skineditor/icon.png",
   "environment": "*",
   "entrypoints": {
     "fabric-datagen": [
