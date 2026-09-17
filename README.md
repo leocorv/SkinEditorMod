@@ -24,7 +24,8 @@ What currently exists in the prototype:
 - server-side scanning of configurable outfit folders;
 - JSON configuration for display-name overrides;
 - server-to-client synchronization of outfit metadata;
-- client-side skin replacement experiments using mixins.
+- client-side skin replacement experiments using mixins;
+- basic resource cleanup and local outfit-path validation.
 
 What is **not** finished:
 
@@ -33,10 +34,24 @@ What is **not** finished:
 - complete outfit/layer management;
 - robust multiplayer synchronization;
 - production-ready UI/UX;
-- validation and error handling;
+- comprehensive validation and error handling;
 - compatibility guarantees;
 - automated tests;
 - packaging for end users.
+
+## Important current limitation
+
+The current network payload synchronizes **outfit metadata**, not the PNG assets themselves.
+
+That means an outfit discovered by the server is described to the client, but the client still loads the corresponding PNG from its own local directory:
+
+```text
+config/skineditor/outfits/
+```
+
+For the current prototype, server and client therefore need matching local outfit files for those layers to load correctly. Automatic asset transfer is **not implemented**.
+
+Client-side file loading is restricted to that outfit directory so a path received from a server cannot intentionally escape it with `../` traversal.
 
 ## Target environment
 
@@ -70,6 +85,7 @@ Minecraft Server
                     |
                     +--> SkinEditorScreen
                     +--> EditableSkin
+                    +--> local outfit PNG loading
                     +--> runtime skin/layer experiments
 ```
 
@@ -129,7 +145,6 @@ src/
     ├── SkinEditorScreen.java
     ├── EditableSkin.java
     ├── SkinLayer.java
-    ├── SkinResourceManager.java
     └── mixin/
 ```
 
@@ -141,6 +156,7 @@ Potential future work would include:
 
 - proper layer compositing;
 - reliable skin preview and application;
+- automatic server-to-client asset distribution;
 - better category navigation;
 - persistence of user selections;
 - cleaner server/client synchronization;
